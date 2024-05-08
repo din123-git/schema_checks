@@ -1,0 +1,186 @@
+Complete Script
+1. Create schema_check_log Table:
+This table will log the results of the schema comparisons.
+
+sql
+Copy code
+CREATE TABLE `cs-prj-pp.cs_data.schema_check_log` (
+  source_project STRING,
+  source_dataset STRING,
+  source_table STRING,
+  target_project STRING,
+  target_dataset STRING,
+  target_table STRING,
+  column_match BOOLEAN,
+  partition_match BOOLEAN,
+  clustering_match BOOLEAN,
+  check_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP()
+);
+2. Create schema_comparison_metadata Table:
+This table stores the pairs of tables to compare.
+
+sql
+Copy code
+CREATE TABLE `cs-prj-pp.cs_data.schema_comparison_metadata` (
+  source_project STRING,
+  source_dataset STRING,
+  source_table STRING,
+  target_project STRING,
+  target_dataset STRING,
+  target_table STRING
+);
+3. Procedure for Single-Pair Comparison:
+The procedure compares the schema between a source and target table, logging results in the schema_check_log table.
+
+sql
+Copy code
+CREATE OR REPLACE PROCEDURE `cs-prj-pp.cs_data.precheck_single_pair`(
+  IN source_project STRING,
+  IN source_dataset STRING,
+  IN source_table STRING,
+  IN target_project STRING,
+  IN target_dataset STRING,
+  IN target_table STRING
+)
+BEGIN
+  DECLARE column_match BOOLEAN DEFAULT TRUE;
+  DECLARE partition_match BOOLEAN DEFAULT TRUE;
+  DECLARE clustering_match BOOLEAN DEFAULT TRUE;
+
+  -- Retrieve column schemas
+  CREATE TEMP TABLE source_columns AS
+  SELECT column_name, data_type
+  FROM `${source_project}.${source_dataset}.INFORMATION_SCHEMA.COLUMNS`
+  WHERE table_name = source_table;
+
+  CREATE TEMP TABLE target_columns AS
+  SELECT column_name, data_type
+  FROM `${target_project}.${target_dataset}.INFORMATION_SCHEMA.COLUMNS`
+  WHERE table_name = target_table;
+
+  -- Compare columns
+  CREATE TEMP TABLE column_differences AS
+  SELECT s.column_name, s.data_type AS source_type, t.data_type AS target_type
+  FROM source_columns s
+  LEFT JOIN target_columns t ON s.column_name = t.column_name
+  WHERE t.column_name IS NULL OR s.data_type <> t.data_type;
+
+  IF (SELECT COUNT(*) FROM column_differences) > 0 THEN
+    SET column_match = FALSE;
+  END IF;
+
+  -- Retrieve partition columns
+  CREATE TEMP TABLE source_partition AS
+  SELECT partitioning_column
+  FROM `${source_project}.${source_dataset}.INFORMATION_SCHEMA.PARTITIONS`
+  WHERE table_name = source_table;
+
+  CREATE TEMP TABLE target_partition AS
+  SELECT partitioning_column
+  FROM `${target_project}.${target_dataset}.INFORMATION_SCHEMA.PARTITIONS`
+  WHERE table_name = target_table;
+
+  -- Compare partitions
+  CREATE TEMP TABLE partition_differences AS
+  SELECT sp.partitioning_column AS source_partition, tp.partitioning_column AS target_partition
+  FROM source_partition sp
+  LEFT JOIN target_partition tp ON sp.partitioning_column = tp.partitioning_column
+  WHERE tp.partitioning_column IS NULL;
+
+  IF (SELECT COUNT(*) FROM partition_differences) > 0 THEN
+    SET partition_match = FALSE;
+  END IF;
+
+  -- Retrieve clustering columns
+  CREATE TEMP TABLE source_clustering AS
+  SELECT column_name
+  FROM `${source_project}.${source_dataset}.INFORMATION_SCHEMA.CLUSTERING_COLUMNS`
+  WHERE table_name = source_table;
+
+  CREATE TEMP TABLE target_clustering AS
+  SELECT column_name
+  FROM `${target_project}.${target_dataset}.INFORMATION_SCHEMA.CLUSTERING_COLUMNS`
+  WHERE table_name = target_table;
+
+  -- Compare clustering columns
+  CREATE TEMP TABLE clustering_differences AS
+  SELECT sc.column_name AS source_clustering, tc.column_name AS target_clustering
+  FROM source_clustering sc
+  LEFT JOIN target_clustering tc ON sc.column_name = tc.column_name
+  WHERE tc.column_name IS NULL;
+
+  IF (SELECT COUNT(*) FROM clustering_differences) > 0 THEN
+    SET clustering_match = FALSE;
+  END IF;
+
+  -- Log results into the schema_check_log table
+  INSERT INTO `cs-prj-pp.cs_data.schema_check_log`(
+    source_project, source_dataset, source_table,
+    target_project, target_dataset, target_table,
+    column_match, partition_match, clustering_match
+  )
+  VALUES (source_project, source_dataset, source_table, target_project, target_dataset, target_table, column_match, partition_match, clustering_match);
+END;
+4. Procedure to Loop through Metadata:
+This main procedure will loop through the pairs listed in the schema_comparison_metadata table and call the precheck_single_pair procedure for each pair.
+
+sql
+Copy code
+CREATE OR REPLACE PROCEDURE `cs-prj-pp.cs_data.loop_comparison_pairs`()
+BEGIN
+  DECLARE source_project STRING;
+  DECLARE source_dataset STRING;
+  DECLARE source_table STRING;
+  DECLARE target_project STRING;
+  DECLARE target_dataset STRING;
+  DECLARE target_table STRING;
+  
+  -- Cursor to iterate through the metadata table
+  DECLARE pairs_cursor CURSOR FOR
+  SELECT source_project, source_dataset, source_table,
+         target_project, target_dataset, target_table
+  FROM `cs-prj-pp.cs_data.schema_comparison_metadata`;
+
+  -- Open the cursor
+  OPEN pairs_cursor;
+
+  -- Loop through each table pair
+  pair_loop: LOOP
+    FETCH pairs_cursor INTO source_project, source_dataset, source_table,
+                           target_project, target_dataset, target_table;
+
+    -- Exit the loop if no more rows are available
+    IF pairs_cursor%NOTFOUND THEN
+      LEAVE pair_loop;
+    END IF;
+
+    -- Dynamic SQL to call the comparison procedure for each pair
+    EXECUTE IMMEDIATE FORMAT("""
+      CALL `cs-prj-pp.cs_data.precheck_single_pair`(
+        '%s', '%s', '%s',
+        '%s', '%s', '%s'
+      )
+      """,
+      source_project, source_dataset, source_table,
+      target_project, target_dataset, target_table);
+  END LOOP;
+
+  -- Close the cursor
+  CLOSE pairs_cursor;
+END;
+Execution
+Insert Data into schema_comparison_metadata:
+Fill the metadata table with pairs to compare:
+sql
+Copy code
+INSERT INTO `cs-prj-pp.cs_data.schema_comparison_metadata` (
+  source_project, source_dataset, source_table, target_project, target_dataset, target_table
+)
+VALUES
+  ('cs-prj-prod', 'cs_data', 'employee', 'cs-prj-pp', 'cs_data', 'employee'),
+  ('cs-prj-prod', 'cs_data', 'department', 'cs-prj-pp', 'cs_data', 'department');
+Execute Loop Procedure:
+Call the looping procedure to execute all comparisons:
+sql
+Copy code
+CALL `cs-prj-pp.cs_data.loop_comparison_pairs`();
