@@ -1,0 +1,134 @@
+-- Assuming this is your exact query text
+DECLARE exact_query_text STRING;
+SET exact_query_text = """
+SELECT * FROM my_table
+WHERE condition = 'value'
+""";
+
+-- Create a hash of the query text
+DECLARE query_hash STRING;
+SET query_hash = TO_HEX(MD5(exact_query_text));
+
+-- Query the logs using the hash
+SELECT 
+  COUNT(*) AS query_frequency
+FROM 
+  `region-us`.INFORMATION_SCHEMA.JOBS_BY_PROJECT
+WHERE 
+  creation_time >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)
+  AND state = 'DONE'
+  AND job_type = 'QUERY'
+  AND TO_HEX(MD5(query)) = query_hash;
+
+
+
+-- Step 1: Declare the exact query text
+DECLARE exact_query_text STRING;
+SET exact_query_text = """
+SELECT * FROM my_table
+WHERE condition = 'value'
+""";
+
+-- Step 2: Normalize the query by removing extra spaces and newlines
+DECLARE normalized_query STRING;
+SET normalized_query = REGEXP_REPLACE(exact_query_text, r'\s+', ' ');
+
+-- Step 3: Create a hash of the normalized query
+DECLARE query_hash STRING;
+SET query_hash = TO_HEX(MD5(normalized_query));
+
+-- Step 4: Query the logs using the hash of the normalized query
+SELECT 
+  COUNT(*) AS query_frequency
+FROM 
+  `region-us`.INFORMATION_SCHEMA.JOBS_BY_PROJECT
+WHERE 
+  creation_time >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)
+  AND state = 'DONE'
+  AND job_type = 'QUERY'
+  AND TO_HEX(MD5(REGEXP_REPLACE(query, r'\s+', ' '))) = query_hash;
+
+
+
+Using the length of the query text can help filter queries that have similar characteristics, but it's not as precise as hashing the normalized text. However, it can be a useful heuristic to narrow down the candidates for more detailed comparison. We can count the occurrences of queries with the same length and then further inspect these queries to identify the exact match.
+
+Here’s how you can do it:
+
+Retrieve Query Lengths: Get the length of each query that ran in the last 30 days.
+Group by Length: Group the queries by their length and count the occurrences.
+Filter by Query Text: Narrow down the candidates by filtering queries with the same length as the exact query.
+Step-by-Step Implementation
+1. Calculate the Length of the Exact Query
+First, calculate the length of the exact query text.
+
+sql
+Copy code
+DECLARE exact_query_text STRING;
+SET exact_query_text = """
+SELECT * FROM my_table
+WHERE condition = 'value'
+""";
+
+-- Calculate the length of the exact query text
+DECLARE exact_query_length INT64;
+SET exact_query_length = LENGTH(REGEXP_REPLACE(exact_query_text, r'\s+', ' '));
+2. Query the Logs by Length
+Next, use this length to filter and count queries in the logs.
+
+sql
+Copy code
+-- Retrieve and count queries by length from the logs
+SELECT 
+  query,
+  COUNT(*) AS query_frequency
+FROM 
+  `region-us`.INFORMATION_SCHEMA.JOBS_BY_PROJECT
+WHERE 
+  creation_time >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)
+  AND state = 'DONE'
+  AND job_type = 'QUERY'
+  AND LENGTH(REGEXP_REPLACE(query, r'\s+', ' ')) = exact_query_length
+GROUP BY 
+  query
+ORDER BY 
+  query_frequency DESC;
+Explanation
+Normalize and Calculate Length:
+
+Use REGEXP_REPLACE to normalize the query by removing extra whitespace.
+Calculate the length of the normalized query.
+Filter and Count Queries by Length:
+
+Use the LENGTH function to get the length of each query in the logs.
+Filter queries to include only those with the same length as the exact query.
+Group by the query text and count the occurrences.
+Further Filtering
+If multiple queries have the same length, you can further inspect them manually or apply additional filters to identify the exact match. Here’s an extended version that includes an additional filter for partial matching:
+
+sql
+Copy code
+-- Retrieve and count queries by length and partial matching
+SELECT 
+  query,
+  COUNT(*) AS query_frequency
+FROM 
+  `region-us`.INFORMATION_SCHEMA.JOBS_BY_PROJECT
+WHERE 
+  creation_time >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)
+  AND state = 'DONE'
+  AND job_type = 'QUERY'
+  AND LENGTH(REGEXP_REPLACE(query, r'\s+', ' ')) = exact_query_length
+  AND query LIKE '%SELECT * FROM my_table%'
+GROUP BY 
+  query
+ORDER BY 
+  query_frequency DESC;
+Explanation
+Partial Matching: Use the LIKE operator to include a partial match of the query text to further narrow down the results.
+This approach provides a balance between performance and accuracy by using query length as a heuristic and refining the results with partial matching. If you have more specific requirements or need further assistance, let me know!
+
+
+
+
+
+
