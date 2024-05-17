@@ -1,0 +1,43 @@
+CREATE OR REPLACE PROCEDURE `your_project.your_dataset.backup_view`(
+    project_name STRING,
+    dataset_name STRING,
+    view_name STRING,
+    backup_view_name STRING
+)
+BEGIN
+  DECLARE view_query STRING;
+  
+  -- Retrieve the view definition
+  SET view_query = (
+    SELECT
+      ddl
+    FROM
+      `region-us`.INFORMATION_SCHEMA.VIEWS
+    WHERE
+      table_catalog = project_name
+      AND table_schema = dataset_name
+      AND table_name = view_name
+  );
+
+  -- Replace the view name in the query
+  SET view_query = REPLACE(view_query, CONCAT('CREATE VIEW ', project_name, '.', dataset_name, '.', view_name), CONCAT('CREATE VIEW ', project_name, '.CDW_BKP.', backup_view_name));
+  
+  -- Execute the query to create the backup view
+  EXECUTE IMMEDIATE view_query;
+  
+  -- Log the backup creation
+  INSERT INTO `your_project.your_dataset.backup_logs` (project_name, dataset_name, view_name, backup_view_name, backup_time)
+  VALUES (project_name, dataset_name, view_name, backup_view_name, CURRENT_TIMESTAMP());
+END;
+
+
+CREATE TABLE IF NOT EXISTS `your_project.your_dataset.backup_logs` (
+  project_name STRING,
+  dataset_name STRING,
+  view_name STRING,
+  backup_view_name STRING,
+  backup_time TIMESTAMP
+);
+
+
+CALL `your_project.your_dataset.backup_view`('your_project', 'your_dataset', 'your_view', 'your_backup_view');
