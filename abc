@@ -1,0 +1,70 @@
+Step 1: Install Required Packages
+Ensure you have Python and pip installed. Then, install the necessary packages:
+
+
+pip install google-cloud-bigquery pandas
+Step 2: Create the Python Script
+Create a Python script (e.g., query_similarity.py) with the following content:
+
+
+import pandas as pd
+from google.cloud import bigquery
+from difflib import SequenceMatcher
+
+# Initialize BigQuery client
+client = bigquery.Client.from_service_account_json('path_to_your_service_account_key.json')
+
+# Function to calculate similarity percentage
+def calculate_similarity(query1, query2):
+    return SequenceMatcher(None, query1, query2).ratio() * 100
+
+# Input Query1
+query1 = """
+SELECT
+  a.game_id,
+  a.timestamp AS event_timestamp,
+  a.event_description AS event_description_a,
+  b.timestamp AS event_timestamp_b,
+  b.event_description AS event_description_b
+FROM
+  `glossy-radio-403405.ncaa_basketball.mbb_pbp_sr` a
+CROSS JOIN
+  `glossy-radio-403405.ncaa_basketball.mbb_pbp_sr` b
+"""
+
+# Query2 to get the list of queries from INFORMATION_SCHEMA.JOBS_BY_PROJECT
+query2 = """
+SELECT 
+  query
+FROM 
+  `region-us`.INFORMATION_SCHEMA.JOBS_BY_PROJECT
+WHERE 
+  query LIKE '%event_description%ncaa_basketball.mbb_pbp_sr%'
+"""
+
+# Execute Query2
+query_job = client.query(query2)
+results = query_job.result().to_dataframe()
+
+# Calculate similarity percentage for each query
+results['similarity_percentage'] = results['query'].apply(lambda x: calculate_similarity(query1, x))
+
+# Display results
+print(results)
+
+# Save the results to a CSV file
+results.to_csv('query_similarity_results.csv', index=False)
+Step 3: Run the Script
+Run the Python Script: Execute the script in your terminal or command prompt. Replace path_to_your_service_account_key.json with the path to your service account JSON key file.
+
+python query_similarity.py
+Step 4: Review the Results
+The script will print the results to the console and save them to a CSV file (query_similarity_results.csv). You can review the similarity percentages to see how closely each query in the INFORMATION_SCHEMA.JOBS_BY_PROJECT table matches your input Query1.
+
+Step 5: Automate (Optional)
+If you want to automate this process, you can use a job scheduler like cron on Linux or Task Scheduler on Windows, or you can use GCP's Cloud Functions or Cloud Scheduler.
+
+Additional Notes
+Security: Ensure that your service account key is kept secure. Do not hard-code sensitive information in your scripts.
+Logging: Consider adding logging to your script for better monitoring and debugging.
+Error Handling: Implement error handling to manage exceptions and ensure your script runs smoothly even if something goes wrong.
