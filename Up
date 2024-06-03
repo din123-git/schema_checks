@@ -1,0 +1,9 @@
+UPDATE dept d
+SET
+  d.dept1 = e.dept1,
+  d.dept2 = e.dept2
+FROM (
+  SELECT emp_name, dept1, dept2
+  FROM emp
+) AS e
+WHERE SPLIT(d.user_email, '@')[OFFSET(0)] = e.emp_name
