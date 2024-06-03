@@ -1,0 +1,65 @@
+To identify unused tables in BigQuery, you can leverage the information available in the `INFORMATION_SCHEMA` views. Specifically, the `INFORMATION_SCHEMA.TABLES` view can provide metadata about tables, and you can use the `INFORMATION_SCHEMA.JOBS` view to determine the last access time.
+
+Here's a step-by-step approach to achieve this:
+
+1. **Query the `INFORMATION_SCHEMA.TABLES` view** to get the list of all tables.
+2. **Query the `INFORMATION_SCHEMA.JOBS` view** to get the last access times of these tables.
+3. **Filter out the tables** that have not been accessed in the last 120 days.
+4. **Generate a list of table owners** to notify them about potential cleanup.
+
+Here is a sample SQL query that you can use to find tables not accessed in the last 120 days:
+
+```sql
+WITH table_last_access AS (
+  SELECT
+    project_id,
+    dataset_id,
+    table_id,
+    MAX(last_access_time) AS last_access_time
+  FROM (
+    SELECT
+      project_id,
+      dataset_id,
+      table_id,
+      TIMESTAMP_MILLIS(last_modified_time) AS last_access_time
+    FROM
+      `project-id.region.INFORMATION_SCHEMA.TABLES`
+    UNION ALL
+    SELECT
+      project_id,
+      dataset_id,
+      table_id,
+      TIMESTAMP_MILLIS(last_access_time) AS last_access_time
+    FROM
+      `project-id.region.INFORMATION_SCHEMA.JOBS`
+    WHERE
+      job_type = 'QUERY'
+  )
+  GROUP BY
+    project_id,
+    dataset_id,
+    table_id
+)
+
+SELECT
+  project_id,
+  dataset_id,
+  table_id,
+  last_access_time,
+  DATE_DIFF(CURRENT_DATE(), DATE(last_access_time), DAY) AS days_since_last_access
+FROM
+  table_last_access
+WHERE
+  DATE_DIFF(CURRENT_DATE(), DATE(last_access_time), DAY) > 120
+ORDER BY
+  days_since_last_access DESC;
+```
+
+This query combines information from both the `TABLES` and `JOBS` views to get the last access time for each table. You can adjust `project-id.region` with your actual project ID and region.
+
+### Next Steps:
+1. **Notify Table Owners**: You can get the owners of the tables from your internal documentation or metadata if stored separately. You might need to maintain an inventory of table owners.
+
+2. **Automate Notifications**: Write a script (e.g., using Python) to automate the process of sending notifications to the table owners. This script can query BigQuery, generate the list of unused tables, and send emails or messages.
+
+Would you like assistance with creating a script for notifications or automating this process further?
