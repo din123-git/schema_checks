@@ -1,0 +1,117 @@
+The provided SQL query primarily tracks direct queries on tables. To include tables accessed via views or materialized views, we need to incorporate additional logic to trace the lineage and usage of these views.
+
+Here's an updated approach:
+
+1. **Identify Tables and Views Usage**: Track not only direct table accesses but also accesses through views and materialized views.
+2. **Combine Usage Information**: Aggregate all access information to determine if any table has been used within the last 120 days.
+
+### Step 1: Identify Usage of Tables, Views, and Materialized Views
+
+Here's how you can enhance the SQL query to consider views and materialized views:
+
+```sql
+WITH direct_table_access AS (
+  SELECT
+    project_id,
+    dataset_id,
+    table_id,
+    MAX(last_access_time) AS last_access_time
+  FROM (
+    SELECT
+      project_id,
+      dataset_id,
+      table_id,
+      TIMESTAMP_MILLIS(last_modified_time) AS last_access_time
+    FROM
+      `project-id.region.INFORMATION_SCHEMA.TABLES`
+    UNION ALL
+    SELECT
+      project_id,
+      dataset_id,
+      table_id,
+      TIMESTAMP_MILLIS(last_access_time) AS last_access_time
+    FROM
+      `project-id.region.INFORMATION_SCHEMA.JOBS`
+    WHERE
+      job_type = 'QUERY'
+  )
+  GROUP BY
+    project_id,
+    dataset_id,
+    table_id
+),
+
+view_access AS (
+  SELECT
+    referenced_project_id AS project_id,
+    referenced_dataset_id AS dataset_id,
+    referenced_table_id AS table_id,
+    MAX(end_time) AS last_access_time
+  FROM
+    `project-id.region.INFORMATION_SCHEMA.JOBS_BY_PROJECT`
+  WHERE
+    job_type = 'QUERY'
+    AND referenced_table_type = 'VIEW'
+  GROUP BY
+    referenced_project_id,
+    referenced_dataset_id,
+    referenced_table_id
+),
+
+materialized_view_access AS (
+  SELECT
+    referenced_project_id AS project_id,
+    referenced_dataset_id AS dataset_id,
+    referenced_table_id AS table_id,
+    MAX(end_time) AS last_access_time
+  FROM
+    `project-id.region.INFORMATION_SCHEMA.JOBS_BY_PROJECT`
+  WHERE
+    job_type = 'QUERY'
+    AND referenced_table_type = 'MATERIALIZED_VIEW'
+  GROUP BY
+    referenced_project_id,
+    referenced_dataset_id,
+    referenced_table_id
+),
+
+combined_access AS (
+  SELECT * FROM direct_table_access
+  UNION ALL
+  SELECT * FROM view_access
+  UNION ALL
+  SELECT * FROM materialized_view_access
+)
+
+SELECT
+  project_id,
+  dataset_id,
+  table_id,
+  MAX(last_access_time) AS last_access_time,
+  DATE_DIFF(CURRENT_DATE(), DATE(MAX(last_access_time)), DAY) AS days_since_last_access
+FROM
+  combined_access
+GROUP BY
+  project_id,
+  dataset_id,
+  table_id
+HAVING
+  DATE_DIFF(CURRENT_DATE(), DATE(MAX(last_access_time)), DAY) > 120
+ORDER BY
+  days_since_last_access DESC;
+```
+
+### Explanation:
+1. **`direct_table_access`**: Tracks the last access time of tables directly.
+2. **`view_access` and `materialized_view_access`**: Track the last access times of tables via views and materialized views, respectively.
+3. **`combined_access`**: Combines all access information.
+4. **Final Query**: Filters tables not accessed in the last 120 days, considering direct and indirect accesses.
+
+### Automating Notifications:
+You can automate notifications using a script. Here's a brief outline in Python:
+
+1. Query BigQuery to get the list of unused tables.
+2. Generate email content for each table owner.
+3. Send notifications.
+
+Would you like a detailed example of a Python script for this automation?
