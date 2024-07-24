@@ -1,0 +1,15 @@
+SELECT
+  protoPayload.metadata.jobConfiguration.query.query AS routine_name,
+  TIMESTAMP(protoPayload.metadata.jobStatistics.creationTime) AS start_time,
+  TIMESTAMP(protoPayload.metadata.jobStatistics.endTime) AS end_time,
+  TIMESTAMP_DIFF(TIMESTAMP(protoPayload.metadata.jobStatistics.endTime), TIMESTAMP(protoPayload.metadata.jobStatistics.creationTime), SECOND) AS duration_seconds
+FROM
+  `your_project_id.logs_dataset.cloudaudit_googleapis_com_data_access_*`
+WHERE
+  resource.type = "bigquery_project"
+  AND resource.labels.project_id = "[YOUR_PROJECT_ID]"
+  AND protoPayload.serviceName = "bigquery.googleapis.com"
+  AND protoPayload.methodName = "jobservice.jobcompleted"
+  AND (protoPayload.metadata.jobConfiguration.query.query LIKE '%CALL abc%' OR protoPayload.metadata.jobConfiguration.query.query LIKE '%CALL xyz%')
+ORDER BY
+  start_time DESC
