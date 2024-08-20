@@ -1,0 +1,4 @@
+resource.type="gcs_bucket"
+resource.labels.bucket_name="your-bucket-name"
+protoPayload.methodName="storage.objects.delete"
+protoPayload.resourceName="projects/_/buckets/your-bucket-name/objects/your-folder-name/"
