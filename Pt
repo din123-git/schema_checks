@@ -1,0 +1,60 @@
+WITH calendar AS (
+  SELECT *, EXTRACT(YEAR FROM calendardate) AS year, EXTRACT(MONTH FROM calendardate) AS month
+  FROM Table_A
+),
+filtered_table_b AS (
+  SELECT *,
+         EXTRACT(YEAR FROM dweffdate) AS eff_year,
+         EXTRACT(MONTH FROM dweffdate) AS eff_month
+  FROM Table_B
+  WHERE dweffdate <= (SELECT MAX(calendardate) FROM Table_A)
+    AND dwexpdate >= (SELECT MIN(calendardate) FROM Table_A)
+)
+SELECT *
+FROM calendar AS A
+JOIN filtered_table_b AS B
+ON A.calendardate BETWEEN B.dweffdate AND B.dwexpdate
+   AND A.year = B.eff_year -- or join on both year and month if ranges are big
+   AND A.month = B.eff_month;
+
+
+
+WITH calendar AS (
+  SELECT *
+  FROM Table_A
+),
+filtered_table_b AS (
+  SELECT *,
+         ARRAY(SELECT AS STRUCT dweffdate, dwexpdate
+               FROM UNNEST(GENERATE_ARRAY(
+                   EXTRACT(DAY FROM dweffdate), 
+                   EXTRACT(DAY FROM dwexpdate)
+               ))) AS date_range
+  FROM Table_B
+  WHERE dweffdate <= (SELECT MAX(calendardate) FROM Table_A)
+    AND dwexpdate >= (SELECT MIN(calendardate) FROM Table_A)
+)
+SELECT *
+FROM calendar AS A
+JOIN filtered_table_b AS B
+ON A.calendardate BETWEEN B.dweffdate AND B.dwexpdate;
+
+
+WITH calendar AS (
+  SELECT *, 
+         FLOOR(DATE_DIFF(calendardate, '2000-01-01', DAY) / 7) AS week_bucket -- weekly bucket
+  FROM Table_A
+),
+filtered_table_b AS (
+  SELECT *,
+         FLOOR(DATE_DIFF(dweffdate, '2000-01-01', DAY) / 7) AS week_bucket
+  FROM Table_B
+  WHERE dweffdate <= (SELECT MAX(calendardate) FROM Table_A)
+    AND dwexpdate >= (SELECT MIN(calendardate) FROM Table_A)
+)
+SELECT *
+FROM calendar AS A
+JOIN filtered_table_b AS B
+ON A.week_bucket = B.week_bucket
+   AND A.calendardate >= B.dweffdate
+   AND A.calendardate <= B.dwexpdate;
