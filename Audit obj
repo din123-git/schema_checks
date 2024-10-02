@@ -1,0 +1,52 @@
+To find out which objects a specific service account has accessed in BigQuery over the last six months, you can query the BigQuery audit logs. Here’s a step-by-step approach to achieving this:
+
+1. Set up Audit Logs
+
+BigQuery automatically logs activities, including data access, through the Cloud Audit Logs. The specific log type for data access in BigQuery is the bigquery.googleapis.com/data_access log.
+
+2. Query the Audit Logs
+
+You can run the following SQL in the *_TABLES of the cloudaudit_googleapis_com_data_access logs dataset in your Google Cloud project:
+
+SELECT
+  protopayload_auditlog.authenticationInfo.principalEmail AS service_account,
+  protopayload_auditlog.resourceName AS resource_name,
+  protopayload_auditlog.serviceData.jobCompletedEvent.job.jobStatistics.createTime AS access_time,
+  protopayload_auditlog.methodName AS access_method
+FROM
+  `project_id.region.cloudaudit_googleapis_com_data_access_*`
+WHERE
+  protopayload_auditlog.authenticationInfo.principalEmail = 'service-account@project-id.iam.gserviceaccount.com'
+  AND TIMESTAMP_DIFF(CURRENT_TIMESTAMP(), protopayload_auditlog.serviceData.jobCompletedEvent.job.jobStatistics.createTime, MONTH) <= 6
+  AND protopayload_auditlog.serviceName = 'bigquery.googleapis.com'
+ORDER BY
+  access_time DESC
+
+Explanation of the Query
+
+project_id.region.cloudaudit_googleapis_com_data_access_*: Replace project_id and region with your specific project ID and log dataset region.
+
+protopayload_auditlog.authenticationInfo.principalEmail: This field identifies the email address of the service account accessing the objects.
+
+protopayload_auditlog.resourceName: This field specifies the BigQuery object (table, view, etc.) being accessed.
+
+protopayload_auditlog.serviceData.jobCompletedEvent.job.jobStatistics.createTime: The timestamp of when the access event occurred.
+
+access_method: Provides the method used for the access, like querying a table, listing datasets, etc.
+
+Date Filter: Filters access events that occurred in the last six months.
+
+
+Important Notes
+
+1. You need to have the necessary permissions (bigquery.admin or logging.viewer) to access the audit logs.
+
+
+2. The audit logs must be enabled for the project; if not, enable them through the Google Cloud Console.
+
+
+3. Adjust the dataset region and project_id in the log table name according to your setup.
+
+
+
+This query provides a detailed log of all the access events by the specified service account in the past six months.
