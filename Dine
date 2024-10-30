@@ -1,41 +1,61 @@
+WITH 
+  -- Filter early to reduce the amount of data scanned
+  filtered_jobs AS (
+    SELECT * 
+    FROM ldw_admin.CTM_JOB_T 
+    WHERE UPPER(CTM_JOB_NM) IN (UPPER('abcdefg')) 
+      AND PRED_TYPE_CD = 'PRED' 
+      AND CTM_JOB_NM <> PRED_CTM_JOB_NM
+  ),
+  
+  -- Recursive CTE with early filtering and reduced recursion depth
+  predecessor_impacts AS (
+    SELECT 
+      CTM_JOB_NM AS CTM_JOB,
+      PRED_CTM_JOB_NM AS parent_ctm_job,
+      CTM_JOB_NM AS child_ctm_job,
+      1 AS joblevel
+    FROM 
+      filtered_jobs
+  
+    UNION ALL
+  
+    SELECT 
+      predjob.CTM_JOB,
+      nextlevel.PRED_CTM_JOB_NM AS parent_ctm_job,
+      predjob.parent_ctm_job AS child_ctm_job,
+      predjob.joblevel + 1 AS joblevel
+    FROM 
+      filtered_jobs AS nextlevel
+    INNER JOIN 
+      predecessor_impacts AS predjob 
+      ON nextlevel.CTM_JOB_NM = predjob.parent_ctm_job
+    WHERE 
+      predjob.joblevel < 10  -- Adjust recursive depth for better performance
+  ),
+  
+  -- Use ROW_NUMBER() to deduplicate rows instead of SELECT DISTINCT
+  ranked_jobs AS (
+    SELECT 
+      *, 
+      ROW_NUMBER() OVER (
+        PARTITION BY CTM_JOB, parent_ctm_job, child_ctm_job 
+        ORDER BY joblevel
+      ) AS row_num
+    FROM 
+      predecessor_impacts
+  )
 
-WITH RECURSIVE predecessor_impacts AS (
-  -- Base case: Get the distinct jobs that meet the 'PRED' type condition
-  SELECT 
-    CTM_JOB_NM AS CTM_JOB,
-    PRED_CTM_JOB_NM AS parent_ctm_job,
-    CTM_JOB_NM AS child_ctm_job,
-    1 AS joblevel
-  FROM 
-    ldw_admin.CTM_JOB_T
-  WHERE 
-    UPPER(CTM_JOB_NM) IN (UPPER('abcdefg'))
-    AND PRED_TYPE_CD = 'PRED'
-    AND CTM_JOB_NM <> PRED_CTM_JOB_NM
-  
-  UNION ALL
-  
-  -- Recursive case: Traverse through the job levels recursively, increasing joblevel each time
-  SELECT 
-    predjob.CTM_JOB,
-    nextlevel.PRED_CTM_JOB_NM AS parent_ctm_job,
-    predjob.parent_ctm_job AS child_ctm_job,
-    predjob.joblevel + 1 AS joblevel
-  FROM 
-    ldw_admin.CTM_JOB_T AS nextlevel
-  INNER JOIN 
-    predecessor_impacts AS predjob 
-    ON nextlevel.CTM_JOB_NM = predjob.parent_ctm_job
-  WHERE 
-    predjob.joblevel < 20
-)
-SELECT DISTINCT 
+-- Final selection, keeping only the first occurrence per partition
+SELECT 
   CTM_JOB, 
   parent_ctm_job, 
   child_ctm_job, 
   joblevel
 FROM 
-  predecessor_impacts
+  ranked_jobs
+WHERE 
+  row_num = 1
 ORDER BY 
   CTM_JOB, 
   joblevel, 
