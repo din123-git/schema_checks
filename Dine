@@ -1,0 +1,41 @@
+WITH RECURSIVE PredLevel AS (
+    -- Base case: Get the distinct jobs that meet the 'PRED' type condition
+    SELECT DISTINCT 
+        CTM_JOB_NM, 
+        PRED_CTM_JOB_NM
+    FROM ldw_admin.CTM_JOB_T 
+    WHERE PRED_TYPE_CD = 'PRED' 
+      AND CTM_JOB_NM <> PRED_CTM_JOB_NM
+), 
+predecessor_impacts AS (
+    -- First level of recursion: Select initial jobs and assign level 1
+    SELECT DISTINCT 
+        level1.CTM_JOB_NM AS CTM_JOB, 
+        level1.PRED_CTM_JOB_NM AS parent_ctm_job, 
+        level1.CTM_JOB_NM AS child_ctm_job, 
+        1 AS joblevel
+    FROM ldw_admin.CTM_JOB_T AS level1 
+    WHERE UPPER(level1.CTM_JOB_NM) IN (UPPER('abcdefg')) 
+      AND level1.PRED_TYPE_CD = 'PRED'
+      
+    UNION ALL
+
+    -- Recursive case: Traverse through the job levels recursively, increasing joblevel each time
+    SELECT 
+        predjob.CTM_JOB, 
+        nextlevel.PRED_CTM_JOB_NM AS parent_ctm_job, 
+        predjob.parent_ctm_job AS child_ctm_job,
+        predjob.joblevel + 1 AS joblevel
+    FROM PredLevel AS nextlevel
+    INNER JOIN predecessor_impacts AS predjob 
+        ON nextlevel.CTM_JOB_NM = predjob.parent_ctm_job
+    WHERE predjob.joblevel < 20
+)
+
+SELECT DISTINCT 
+    pr.CTM_JOB, 
+    pr.parent_ctm_job, 
+    pr.child_ctm_job, 
+    pr.joblevel
+FROM predecessor_impacts pr
+ORDER BY pr.CTM_JOB, pr.joblevel, pr.parent_ctm_job, pr.child_ctm_job;
