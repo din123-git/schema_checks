@@ -1,1 +1,84 @@
 
+#!/bin/bash
+
+# Replace "true" with "false" in the CSV file
+sed -i 's/true/false/g' your_file.csv
+
+
+To achieve this in BigQuery, you can use the following approaches:
+
+*Approach 1: IGNORE NULLS with DISTINCT*
+```
+SELECT DISTINCT IGNORE NULLS 
+       table_name,
+       date,
+       CASE 
+           WHEN a.date = b.date THEN email 
+           ELSE NULL 
+       END AS email
+FROM ...
+```
+
+*Approach 2: COALESCE with MAX*
+```
+SELECT DISTINCT 
+       table_name,
+       date,
+       COALESCE(
+           CASE 
+               WHEN a.date = b.date THEN email 
+               ELSE NULL 
+           END, 
+           MAX(email) OVER (PARTITION BY table_name, date)  -- assuming email is not array
+       ) AS email
+FROM ...
+```
+
+*Approach 3: FILTER before DISTINCT*
+```
+SELECT DISTINCT 
+       table_name,
+       date,
+       email
+FROM (
+  SELECT 
+       table_name,
+       date,
+       CASE 
+           WHEN a.date = b.date THEN email 
+           ELSE NULL 
+       END AS email
+  FROM ...
+)
+WHERE 
+    email IS NOT NULL
+```
+
+However, this last approach will exclude rows where `email` is `NULL`.
+
+*Approach 4: Using SUBQUERY*
+```
+SELECT 
+    table_name,
+    date,
+    (SELECT DISTINCT email 
+     FROM ... 
+     WHERE a.date = b.date) AS email
+FROM ...
+```
+
+Choose the approach that best fits your use case.
+
+Additional suggestions:
+
+- Verify data types: Ensure `date` columns have the same data type.
+- Check join conditions: Ensure join conditions are correct.
+- Analyze data distribution: Understand why 9 out of 10 records have `NULL` emails.
+
+If issues persist or you need further assistance, please provide:
+
+1. Sample data
+2. Table schema
+3. Expected output
+
+This will help identify the root cause.
