@@ -1,0 +1,3 @@
+isactive=$(echo "$isactive" | tr -d '\r')
+
+dos2unix yourfile.csv
