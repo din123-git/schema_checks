@@ -72,3 +72,48 @@ while IFS=, read -r sourceproject sourcedataset sourcetable targetproject target
     # ...
 done < "$CSV_FILE"
 
+The error `'true/r' command not found` typically occurs when the value of `isactive` is not properly trimmed or quoted.
+
+Since `isactive` is being read from a CSV file, it's likely that the value contains a carriage return (`\r`) or newline (`\n`) character. This can happen when the CSV file is edited on Windows or has inconsistent line endings.
+
+To resolve this issue:
+
+1. *Trim the value*:
+
+```
+bash
+```
+if [ "${isactive// /}" = "true" ]; then
+```
+
+    This removes any leading or trailing spaces from the `isactive` variable.
+
+2.  **Quote the value**:
+
+    ```bash
+if [ "$isactive" = "true" ]; then
+```
+
+```This ensures that the value is treated as a string and prevents the shell from interpreting any special characters.
+```
+1. *Remove carriage return (`\r`) characters*:
+
+```
+bash
+```
+isactive=${isactive//$'\r'/}
+if [ "$isactive" = "true" ]; then
+```
+
+    This explicitly removes any carriage return characters from the `isactive` variable.
+
+Additionally, consider using `while IFS=, read -r` to read the CSV file, which will help handle quoted values and commas correctly:
+
+```bash
+while IFS=, read -r source_project, source_dataset, source_table, target_project, target_dataset, target_table, isactive
+```
+
+Verify that your CSV file has consistent line endings (preferably Unix-style `\n`) and no trailing commas.
+
+If issues persist, provide more context or share the relevant parts of your script for further assistance.
+
