@@ -1,3 +1,55 @@
 isactive=$(echo "$isactive" | tr -d '\r')
 
 dos2unix yourfile.csv
+
+
+#!/bin/bash
+
+# Define variables
+CSV_FILE="tables.csv"
+TIMESTAMP=$(date +%Y%m%d%H%M%S)
+
+# Function to log messages
+log_message() {
+    echo "$(date +'%Y-%m-%d %H:%M:%S') - $1"
+}
+
+# Function to handle errors
+handle_error() {
+    log_message "ERROR: $1"
+    exit 1
+}
+
+# Function to update is_active status to false in CSV
+update_csv() {
+    local line_num=$1
+    sed -i "${line_num}s/true/false/" "$CSV_FILE"
+}
+
+# Process CSV file
+while IFS=, read -r sourceproject sourcedataset sourcetable targetproject targetdataset targettable is_active; do
+    # Skip the header row or any rows where is_active is not "true"
+    if [ "$is_active" != "true" ] || [ "$sourceproject" == "sourceproject" ]; then
+        continue
+    fi
+
+    # Define the line number to update later
+    line_num=$(grep -n "$sourceproject,$sourcedataset,$sourcetable,$targetproject,$targetdataset,$targettable,true" "$CSV_FILE" | cut -d: -f1)
+
+    # Step 1: Take snapshot of the target table
+    snapshot_table="${targetproject}:${targetdataset}.${targettable}_snapshot_$TIMESTAMP"
+    log_message "Creating snapshot of $targetproject:$targetdataset.$targettable as $snapshot_table"
+    bq cp -f "$targetproject:$targetdataset.$targettable" "$snapshot_table" || handle_error "Failed to create snapshot for $targettable"
+
+    # Step 2: Copy data from source to target
+    log_message "Copying data from $sourceproject:$sourcedataset.$sourcetable to $targetproject:$targetdataset.$targettable"
+    bq cp -f "$sourceproject:$sourcedataset.$sourcetable" "$targetproject:$targetdataset.$targettable" || handle_error "Failed to copy data from $sourcetable to $targettable"
+
+    # Step 3: Update is_active to false in the CSV
+    log_message "Updating is_active status to false for $targettable in CSV file"
+    update_csv "$line_num" || handle_error "Failed to update is_active status in CSV file"
+
+    log_message "Successfully processed $targettable. Moving to next entry."
+done < "$CSV_FILE"
+
+log_message "Processing completed for all 'true' entries in $CSV_FILE"
