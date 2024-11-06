@@ -1,0 +1,33 @@
+You can modify the script to check if the target table exists before creating a snapshot. Here's how:
+
+```
+bash
+TODAY=$(date +"%Y%m%d%H%M%S")
+TARGET_TABLE="targettablename"
+TARGET_TABLE_SNAPSHOT="${TARGET_TABLE}_${TODAY}"
+
+# Check if target table exists
+if bq query --use_legacy_sql "SELECT 1 FROM $TARGET_TABLE LIMIT 1"; then
+  # Create snapshot
+  bq query --use_legacy_sql "CREATE SNAPSHOT TABLE $TARGET_TABLE_SNAPSHOT CLONE $TARGET_TABLE"
+  echo "Backup taken: $TARGET_TABLE_SNAPSHOT"
+else
+  echo "Backup not taken: Target table $TARGET_TABLE is not present"
+fi
+``"
+
+Here's what's changed:
+
+1. We first check if the target table exists using a simple `SELECT 1` query with `LIMIT 1`.
+2. If the query succeeds (exit code 0), we create the snapshot.
+3. If the query fails (exit code non-zero), we print a message indicating the target table is not present.
+
+Note:
+
+* `bq query` returns an exit code of 0 if the query executes successfully.
+* We use `--use_legacy_sql` to maintain compatibility with your original script.
+
+By incorporating this check, your script will now handle cases where the target table doesn't exist, providing informative feedback.
+
+If you have further questions or need additional assistance, feel free to ask!
+```
