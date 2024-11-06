@@ -53,3 +53,22 @@ while IFS=, read -r sourceproject sourcedataset sourcetable targetproject target
 done < "$CSV_FILE"
 
 log_message "Processing completed for all 'true' entries in $CSV_FILE"
+
+
+#!/bin/bash
+
+CSV_FILE="tables.csv"
+
+while IFS=, read -r sourceproject sourcedataset sourcetable targetproject targetdataset targettable isactive; do
+    # Skip the header row or if is_active is "false"
+    if [ "$isactive" = "is_active" ] || [ "$(echo "$isactive" | tr -d '\r')" != "true" ]; then
+        continue
+    fi
+
+    # Your processing code for rows where is_active is "true" goes here
+    echo "Processing table: $targetproject:$targetdataset.$targettable"
+
+    # Example: perform a snapshot, data copy, etc.
+    # ...
+done < "$CSV_FILE"
+
