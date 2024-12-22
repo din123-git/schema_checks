@@ -1,0 +1,20 @@
+SELECT 
+  tableA.col1,
+  tableA.col2,
+  tableA.col3,
+  tableA.col4,
+  (SELECT tableB.col4 
+   FROM tableB 
+   WHERE tableA.col4 = tableB.col4 AND tableB.col4 = 'abc') AS tableB_col4,
+  tableA.col5,
+  tableA.col6,
+  tableA.col7,
+  (SELECT tableC.col4 
+   FROM tableC 
+   WHERE tableA.col7 = tableC.col4 AND tableC.col4 = 'pqr') AS tableC_col4,
+  tableA.col8,
+  (SELECT tableD.col4 
+   FROM tableD 
+   WHERE tableA.col8 = tableD.col4 AND tableD.col4 = 'xyz') AS tableD_col4
+FROM 
+  tableA;
