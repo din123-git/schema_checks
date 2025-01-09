@@ -1,0 +1,22 @@
+SELECT
+  DATE(creation_time) AS job_date,
+  project_id,
+  user_email,
+  job_id,
+  job_type,
+  query,
+  total_slot_ms,
+  pending_slot_ms,
+  (pending_slot_ms / total_slot_ms) * 100 AS pending_percentage,
+  creation_time,
+  start_time,
+  end_time
+FROM
+  `region-us.INFORMATION_SCHEMA.JOBS_BY_PROJECT`
+WHERE
+  DATE(creation_time) = '2025-01-08'  -- Replace with your desired date
+  AND total_slot_ms > 0
+  AND pending_slot_ms > 0  -- Focus on jobs experiencing slot contention
+ORDER BY
+  pending_percentage DESC, 
+  pending_slot_ms DESC;
