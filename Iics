@@ -1,0 +1,28 @@
+You're likely referring to the Google Cloud Logging Explorer. Here's how you can use it to potentially find traces of your IICS temporary views:
+1. Accessing the Logging Explorer
+ * Console: Go to the Google Cloud Console and navigate to "Logging" -> "Logs Explorer".
+ * Direct Link: Use this link: https://console.cloud.google.com/logs/query
+2. Constructing Your Query
+You'll need to build a query to filter the logs effectively. Here's a breakdown of key elements and how to adapt them for your needs:
+ * Resource Type:  Start by selecting "BigQuery" as the resource type.
+ * Log Name: Choose "cloudaudit.googleapis.com/data_access [invalid URL removed]" to focus on data access logs.
+ * Service Account: In the filter bar, add a condition to filter by the IICS service account used for your BigQuery connections. It might look something like this:  protoPayload.authenticationInfo.principalEmail="your-iics-service-account@project.iam.gserviceaccount.com" (replace with your actual service account).
+ * Time Range:  Specify the time frame around when your IICS job ran.
+ * Keywords:  Consider adding keywords related to view creation or the names of tables involved in your IICS job. You can use the textPayload field for this. Example: textPayload:("CREATE TEMP VIEW" OR "your_table_name")
+3. Refining Your Search
+ * Explore the Logs:  Examine the log entries that match your query. Look for any signs of temporary view creation, such as SQL queries containing CREATE TEMP VIEW statements.
+ * Iterate and Adjust:  Refine your query by adding more specific filters or keywords based on the information you find in the initial results.
+Important Considerations
+ * Log Volume: BigQuery audit logs can be quite voluminous. Be prepared to sift through a potentially large number of entries.
+ * Permissions: Make sure your user account has the necessary permissions to view BigQuery audit logs.
+ * Log Retention:  Remember that logs are retained for a limited time. Adjust the time range in your query accordingly.
+Example Query
+resource.type="bigquery_project"
+logName="cloudaudit.googleapis.com/data_access"
+protoPayload.authenticationInfo.principalEmail="your-iics-service-account@project.iam.gserviceaccount.com"
+timestamp >= "2024-01-10T10:00:00Z"
+timestamp <= "2024-01-10T11:00:00Z"
+textPayload:("CREATE TEMP VIEW" OR "your_table_name")
+
+Remember to replace the placeholders with your actual values.
+If you're still having trouble, providing more context (IICS version, job type, etc.) and a sanitized snippet of your IICS job log could help me give you a more tailored query!
