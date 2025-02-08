@@ -1,0 +1,8 @@
+SELECT A.*, B.column1
+FROM TableA A
+LEFT JOIN TableB B
+ON A.id = B.id;
+
+SELECT A.*, 
+       IF(EXISTS (SELECT 1 FROM TableB B WHERE A.id = B.id), 'Yes', 'No') AS has_match
+FROM TableA A;
