@@ -1,36 +1,29 @@
-DECLARE sql_stmt STRING;
+DECLARE dataset_param STRING DEFAULT 'your_dataset';  -- Replace with your dataset name
+DECLARE table_param STRING DEFAULT 'your_table';      -- Replace with your table name
+DECLARE sql_stmt STRING DEFAULT '';
 DECLARE dataset_name STRING;
-DECLARE query_result ARRAY<STRUCT<project_id STRING, dataset_id STRING, view_name STRING>>;
-
-SET query_result = [];
 
 -- Iterate over all datasets in the project
 FOR dataset_record IN (
-    SELECT schema_name AS dataset_id
-    FROM `your_project`.`region-<region>`.INFORMATION_SCHEMA.SCHEMATA
+    SELECT schema_name AS dataset_id 
+    FROM `region-<region>`.INFORMATION_SCHEMA.SCHEMATA  -- Fetch all datasets in the project
 )
 DO
-    -- Construct dynamic SQL for each dataset
-    SET sql_stmt = '''
-        SELECT 
-            table_catalog AS project_id, 
-            table_schema AS dataset_id, 
-            table_name AS view_name 
-        FROM `your_project.`''' || dataset_record.dataset_id || '''`.INFORMATION_SCHEMA.VIEWS
-        WHERE LOWER(view_definition) LIKE LOWER('%your_project.your_dataset.your_table%')
-    ''';
-
-    -- Execute the query and store results
-    BEGIN
-        -- Append query results dynamically
-        SET query_result = ARRAY_CONCAT(query_result, ARRAY(
-            SELECT AS STRUCT project_id, dataset_id, view_name FROM EXECUTE IMMEDIATE sql_stmt
-        ));
-    EXCEPTION WHEN ERROR THEN
-        -- Skip datasets that do not have views or permissions issues
-        CONTINUE;
-    END;
+    -- Construct SQL for each dataset
+    SET sql_stmt = sql_stmt || 
+        ' SELECT "' || dataset_record.dataset_id || '" AS dataset_id, table_name AS view_name ' ||
+        ' FROM `' || dataset_record.dataset_id || '`.INFORMATION_SCHEMA.VIEWS ' ||
+        ' WHERE LOWER(view_definition) LIKE LOWER("%' || dataset_param || '.' || table_param || '%") ' ||
+        ' UNION ALL ';
 END FOR;
 
--- Return final results
-SELECT * FROM UNNEST(query_result);
+-- Remove the last "UNION ALL" to avoid syntax errors
+SET sql_stmt = RTRIM(sql_stmt, " UNION ALL ");
+
+-- Execute the final dynamically built SQL query
+IF sql_stmt != '' THEN
+    EXECUTE IMMEDIATE sql_stmt;
+ELSE
+    -- Return message if no datasets are found
+    SELECT "No views found referencing this table" AS message;
+END IF;
