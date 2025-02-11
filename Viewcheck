@@ -1,0 +1,35 @@
+DECLARE sql_stmt STRING;
+DECLARE dataset_name STRING;
+DECLARE query_result ARRAY<STRUCT<project_id STRING, dataset_id STRING, view_name STRING>>;
+
+SET query_result = [];
+
+-- Iterate over all datasets in the project
+FOR dataset_record IN (
+    SELECT schema_name AS dataset_id
+    FROM `your_project`.`region-<region>`.INFORMATION_SCHEMA.SCHEMATA
+)
+DO
+    -- Construct dynamic SQL for each dataset
+    SET sql_stmt = '''
+        SELECT 
+            table_catalog AS project_id, 
+            table_schema AS dataset_id, 
+            table_name AS view_name 
+        FROM `''' || dataset_record.dataset_id || '''`.INFORMATION_SCHEMA.VIEWS
+        WHERE LOWER(view_definition) LIKE LOWER('%your_project.your_dataset.your_table%')
+    ''';
+
+    -- Execute the query and store results
+    BEGIN
+        SET query_result = ARRAY_CONCAT(query_result, ARRAY(
+            EXECUTE IMMEDIATE sql_stmt
+        ));
+    EXCEPTION WHEN ERROR THEN
+        -- Skip datasets where INFORMATION_SCHEMA.VIEWS does not exist
+        CONTINUE;
+    END;
+END FOR;
+
+-- Return final results
+SELECT * FROM UNNEST(query_result);
