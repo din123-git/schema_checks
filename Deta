@@ -1,0 +1,4 @@
+SELECT column 
+FROM abc 
+WHERE SAFE_CAST(column AS INT64) IS NULL 
+AND column IS NOT NULL;
