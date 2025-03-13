@@ -1,0 +1,6 @@
+SELECT 
+  table_name,
+  creation_time,
+  DATE_DIFF(CURRENT_DATE(), DATE(TIMESTAMP_MILLIS(creation_time)), DAY) AS table_age_in_days
+FROM `your_project_id.your_dataset.INFORMATION_SCHEMA.TABLES`
+WHERE table_name = 'your_table_name';
