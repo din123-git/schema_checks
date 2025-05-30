@@ -1,0 +1,85 @@
+DECLARE log_table_name STRING;
+DECLARE timestamp_suffix STRING;
+DECLARE view_check_sql STRING;
+DECLARE insert_sql STRING;
+DECLARE error_message_val STRING;
+
+-- Temporary variable to hold values in loop
+DECLARE view_project_id STRING;
+DECLARE view_dataset_id STRING;
+DECLARE view_name STRING;
+
+-- Generate timestamp for log table name
+SET timestamp_suffix = FORMAT_TIMESTAMP('%Y%m%d_%H%M%S', CURRENT_TIMESTAMP());
+SET log_table_name = FORMAT('view_report_%s', timestamp_suffix);
+
+-- Create the result log table in idwbackup
+EXECUTE IMMEDIATE FORMAT("""
+  CREATE TABLE `idwbackup.%s` (
+    check_timestamp TIMESTAMP,
+    view_project_id STRING,
+    view_dataset_id STRING,
+    view_name STRING,
+    status STRING,
+    details STRING,
+    test_query STRING
+  )
+""", log_table_name);
+
+-- Create temp table of all views in region-us
+CREATE TEMP TABLE temp_all_views AS
+SELECT
+  table_catalog AS project_id,
+  table_schema AS dataset_id,
+  table_name AS view_name
+FROM
+  `region-us`.INFORMATION_SCHEMA.VIEWS;
+
+-- Loop through each view and run LIMIT 0
+FOR view_info IN (
+  SELECT * FROM temp_all_views
+)
+DO
+  SET view_project_id = view_info.project_id;
+  SET view_dataset_id = view_info.dataset_id;
+  SET view_name = view_info.view_name;
+
+  -- Build the test query
+  SET view_check_sql = FORMAT("""
+    SELECT * FROM `%s.%s.%s` LIMIT 0
+  """, view_project_id, view_dataset_id, view_name);
+
+  BEGIN
+    -- Try running the view
+    EXECUTE IMMEDIATE view_check_sql;
+
+    -- If successful, insert OK log
+    EXECUTE IMMEDIATE FORMAT("""
+      INSERT INTO `idwbackup.%s`
+      (check_timestamp, view_project_id, view_dataset_id, view_name, status, details, test_query)
+      VALUES (CURRENT_TIMESTAMP(), @proj, @ds, @view, 'OK', NULL, @query)
+    """, log_table_name)
+    USING view_project_id AS proj, view_dataset_id AS ds, view_name AS view, view_check_sql AS query;
+
+    -- Optional success message
+    -- SELECT FORMAT("✅ View %s.%s.%s OK", view_project_id, view_dataset_id, view_name) AS message;
+
+  EXCEPTION WHEN ERROR THEN
+    -- Capture error
+    SET error_message_val = @@error.message;
+
+    -- Insert ERROR log
+    EXECUTE IMMEDIATE FORMAT("""
+      INSERT INTO `idwbackup.%s`
+      (check_timestamp, view_project_id, view_dataset_id, view_name, status, details, test_query)
+      VALUES (CURRENT_TIMESTAMP(), @proj, @ds, @view, 'ERROR', @err, @query)
+    """, log_table_name)
+    USING view_project_id AS proj, view_dataset_id AS ds, view_name AS view, error_message_val AS err, view_check_sql AS query;
+
+    -- Optional error message
+    -- SELECT FORMAT("❌ View %s.%s.%s ERROR: %s", view_project_id, view_dataset_id, view_name, error_message_val) AS message;
+  END;
+END FOR;
+
+-- Final output
+SELECT FORMAT("✅ View health check completed. Log table created: idwbackup.%s", log_table_name) AS result;
