@@ -1,0 +1,83 @@
+DECLARE log_table_name STRING;
+DECLARE timestamp_suffix STRING;
+DECLARE view_check_sql STRING;
+DECLARE insert_sql STRING;
+DECLARE error_message_val STRING;
+DECLARE v_project_id_sql STRING;
+DECLARE v_dataset_id_sql STRING;
+DECLARE v_view_name_sql STRING;
+DECLARE v_test_query_sql STRING;
+DECLARE v_error_message_sql STRING;
+
+-- Set timestamp for unique table name
+SET timestamp_suffix = FORMAT_TIMESTAMP('%Y%m%d_%H%M%S', CURRENT_TIMESTAMP());
+SET log_table_name = FORMAT('view_report_%s', timestamp_suffix);
+
+-- Create the log table in idwbackup dataset
+EXECUTE IMMEDIATE FORMAT("""
+  CREATE TABLE `idwbackup.%s` (
+    check_timestamp TIMESTAMP,
+    view_project_id STRING,
+    view_dataset_id STRING,
+    view_name STRING,
+    status STRING,
+    details STRING,
+    test_query STRING
+  )
+""", log_table_name);
+
+-- Create temporary table to hold all views
+CREATE TEMP TABLE temp_all_views AS
+SELECT
+  table_catalog AS project_id,
+  table_schema AS dataset_id,
+  table_name AS view_name
+FROM
+  `region-us`.INFORMATION_SCHEMA.VIEWS;
+
+-- Iterate through all views
+FOR view_info IN (
+  SELECT * FROM temp_all_views
+)
+DO
+  -- Prepare test query
+  SET view_check_sql = FORMAT("""
+    SELECT * FROM `%s.%s.%s` LIMIT 0
+  """, view_info.project_id, view_info.dataset_id, view_info.view_name);
+
+  -- Sanitize for insert
+  SET v_project_id_sql = "'" || REPLACE(view_info.project_id, "'", "''") || "'";
+  SET v_dataset_id_sql = "'" || REPLACE(view_info.dataset_id, "'", "''") || "'";
+  SET v_view_name_sql  = "'" || REPLACE(view_info.view_name, "'", "''") || "'";
+  SET v_test_query_sql = "'" || REPLACE(view_check_sql, "'", "''") || "'";
+
+  BEGIN
+    -- Try to execute test query
+    EXECUTE IMMEDIATE view_check_sql;
+
+    -- Insert success log
+    SET insert_sql = FORMAT("""
+      INSERT INTO `idwbackup.%s`
+      (check_timestamp, view_project_id, view_dataset_id, view_name, status, details, test_query)
+      VALUES (CURRENT_TIMESTAMP(), %s, %s, %s, 'OK', NULL, %s)
+    """, log_table_name, v_project_id_sql, v_dataset_id_sql, v_view_name_sql, v_test_query_sql);
+
+    EXECUTE IMMEDIATE insert_sql;
+
+  EXCEPTION WHEN ERROR THEN
+    -- On failure, capture and insert error message
+    SET error_message_val = @@error.message;
+    SET v_error_message_sql = "'" || REPLACE(error_message_val, "'", "''") || "'";
+
+    SET insert_sql = FORMAT("""
+      INSERT INTO `idwbackup.%s`
+      (check_timestamp, view_project_id, view_dataset_id, view_name, status, details, test_query)
+      VALUES (CURRENT_TIMESTAMP(), %s, %s, %s, 'ERROR', %s, %s)
+    """, log_table_name, v_project_id_sql, v_dataset_id_sql, v_view_name_sql, v_error_message_sql, v_test_query_sql);
+
+    EXECUTE IMMEDIATE insert_sql;
+  END;
+END FOR;
+
+-- Final output
+SELECT FORMAT("✅ View health check completed. Results in idwbackup.%s", log_table_name) AS result;
